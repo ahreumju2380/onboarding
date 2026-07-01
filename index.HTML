@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 온보딩 프로그램 외출등록부</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f8fafc; color: #334155; }
+        .glass-card { background: white; border: 1px solid #e2e8f0; border-radius: 1rem; }
+        .status-badge { padding: 0.2rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; }
+        .status-manual { background-color: #fef3c7; color: #92400e; }
+        .status-present { background-color: #dcfce7; color: #166534; }
+        .status-checkout { background-color: #dbeafe; color: #1e40af; }
+        .btn-manual { font-size: 0.65rem; background-color: #f1f5f9; color: #64748b; padding: 4px 8px; border-radius: 6px; border: 1px solid #cbd5e1; cursor: pointer; }
+        .active-tab { background-color: #2563eb !important; color: white !important; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-xl font-bold text-slate-900">2026 온보딩 프로그램 외출등록부</h1>
+            </div>
+            <select id="session-filter" onchange="render()" class="p-2 border border-slate-300 rounded-lg text-sm bg-white">
+                <option value="all">모든 차수</option>
+            </select>
+        </header>
+
+        <div class="glass-card p-4 sm:p-6 shadow-sm border">
+            <div class="flex gap-1.5 mb-6 overflow-x-auto pb-2">
+                <button onclick="setDay(1)" id="btn-day1" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold active-tab">1일차</button>
+                <button onclick="setDay(2)" id="btn-day2" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold">2일차</button>
+                <button onclick="setDay(3)" id="btn-day3" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold">3일차</button>
+                <button onclick="setDay(4)" id="btn-day4" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold">4일차</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="text-xs text-slate-500 uppercase border-b border-slate-100">
+                        <tr><th class="p-3">학습자</th><th class="p-3">차수</th><th id="th-out" class="p-3">1일차 외출</th><th id="th-in" class="p-3">1일차 복귀</th></tr>
+                    </thead>
+                    <tbody id="attendance-table-body" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentDay = 1, state = { masterData: [], attendanceData: [], manualEntries: JSON.parse(localStorage.getItem('manual') || '{}') };
+        const scriptUrl = 'https://script.google.com/macros/s/AKfycbznpzVjDLXDu-yKAoAieDsr3F7BFv5hPnm3DFqXm7el7j5e57y-YOVcLUYMhoSOUqM4/exec';
+        const START_DATE = new Date('2026-07-01');
+
+        function getDayFromDate(dateStr) {
+            const date = new Date(dateStr);
+            const diffTime = date.getTime() - START_DATE.getTime();
+            return Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        }
+
+        async function fetchSheetData() {
+            try {
+                const res = await fetch(scriptUrl + '?_=' + new Date().getTime());
+                const data = await res.json();
+                state.masterData = data.master || [];
+                state.attendanceData = data.attendance || [];
+                render();
+            } catch (e) { console.error("데이터 로드 실패:", e); }
+        }
+
+        async function toggleManual(name, key) {
+            const isDeleting = !!state.manualEntries[name]?.[key];
+            const payload = { action: isDeleting ? 'delete' : 'add', name: name, key: key };
+
+            if (isDeleting) {
+                delete state.manualEntries[name][key];
+            } else {
+                if (!state.manualEntries[name]) state.manualEntries[name] = {};
+                state.manualEntries[name][key] = new Date().toISOString();
+            }
+            localStorage.setItem('manual', JSON.stringify(state.manualEntries));
+            render(); 
+            fetch(scriptUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+        }
+
+        function setDay(d) {
+            currentDay = d;
+            document.querySelectorAll('[id^="btn-day"]').forEach(b => b.classList.remove('active-tab'));
+            document.getElementById(`btn-day${d}`).classList.add('active-tab');
+            document.getElementById('th-out').textContent = `${d}일차 외출`;
+            document.getElementById('th-in').textContent = `${d}일차 복귀`;
+            render();
+        }
+
+        function render() {
+            const sessionVal = document.getElementById('session-filter').value;
+            const tbody = document.getElementById('attendance-table-body');
+            tbody.innerHTML = '';
+            
+            state.masterData.filter(m => sessionVal === 'all' || m.session === sessionVal).forEach(student => {
+                // 해당 학생의 당일 로그만 추출하여 시간순 정렬
+                const dailyLogs = state.attendanceData
+                    .filter(a => a.name === student.name && getDayFromDate(a.time) === currentDay)
+                    .sort((a,b) => new Date(a.time) - new Date(b.time));
+
+                // 1번째는 외출(out), 2번째는 복귀(in)로 할당
+                const outLog = dailyLogs[0];
+                const inLog = dailyLogs[1];
+
+                tbody.innerHTML += `<tr>
+                    <td class="p-3 font-bold">${student.name}</td>
+                    <td class="p-3 text-xs text-slate-500">${student.session || '-'}</td>
+                    <td class="p-3">${generateCell(student.name, outLog?.time, 'out' + currentDay, true)}</td>
+                    <td class="p-3">${generateCell(student.name, inLog?.time, 'in' + currentDay, false)}</td>
+                </tr>`;
+            });
+        }
+
+        function generateCell(name, time, key, isOut) {
+            const safeName = name.replace(/'/g, "\\'");
+            const manualTime = state.manualEntries[name]?.[key];
+            
+            if (time) {
+                return `<span class="status-badge ${isOut ? 'status-checkout' : 'status-present'}">${isOut ? '외출' : '복귀'}</span><span class="text-xs ml-1 font-mono">${new Date(time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
+            }
+            if (manualTime) {
+                return `<span onclick="toggleManual('${safeName}', '${key}')" class="status-badge status-manual">수동취소</span><span class="text-xs ml-1 font-mono">${new Date(manualTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
+            }
+            return `<button onclick="toggleManual('${safeName}', '${key}')" class="btn-manual">등록</button>`;
+        }
+
+        setInterval(fetchSheetData, 15000);
+        window.onload = fetchSheetData;
+    </script>
+</body>
+</html>
