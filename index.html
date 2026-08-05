@@ -29,10 +29,6 @@
                     <option value="2026-08-10" selected>8월 입과 (8/10 시작)</option>
                     <option value="2026-07-06">7월 입과 (7/6 시작)</option>
                 </select>
-                <!-- 세부 차수 필터 -->
-                <select id="session-filter" onchange="render()" class="p-2 border border-slate-300 rounded-lg text-sm bg-white">
-                    <option value="all">모든 차수</option>
-                </select>
             </div>
         </header>
 
@@ -78,7 +74,7 @@
         
         // 동적 시작일 구하기 함수 (선택된 입과 월 기준)
         function getStartDate() {
-            const monthVal = document.getElementById('month-filter').value; // '2026-08-10' 또는 '2026-07-06'
+            const monthVal = document.getElementById('month-filter').value;
             const parts = monthVal.split('-');
             return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
         }
@@ -102,7 +98,6 @@
                 const data = await res.json();
                 state.masterData = data.master || [];
                 state.attendanceData = data.attendance || [];
-                updateSessionFilter();
                 render();
             } catch (e) { console.error("데이터 로드 실패:", e); }
         }
@@ -118,34 +113,16 @@
             return state.masterData.filter(m => {
                 const combinedText = `${m.session || ''} ${m.month || ''}`.trim();
                 
-                // '2026 온보딩_8월', '2026 온보딩_7월' 등 7월/8월 키워드가 포함된 경우 정확히 매칭
                 if (combinedText.includes('7월') || combinedText.includes('8월')) {
                     return combinedText.includes(targetTag);
                 }
                 
-                // 키워드가 명시되지 않은 기존 데이터는 7월 입과 데이터로 분류
                 return !isAugust;
             });
         }
 
         function onMonthChange() {
-            document.getElementById('session-filter').value = 'all';
-            updateSessionFilter();
             render();
-        }
-
-        function updateSessionFilter() {
-            const filter = document.getElementById('session-filter');
-            const currentVal = filter.value;
-            const currentMaster = getFilteredMasterData();
-            const sessions = [...new Set(currentMaster.map(m => m.session).filter(Boolean))].sort();
-            
-            filter.innerHTML = '<option value="all">모든 차수</option>';
-            sessions.forEach(s => {
-                filter.innerHTML += `<option value="${s}">${s}</option>`;
-            });
-            filter.value = currentVal;
-            if (!filter.value) filter.value = 'all';
         }
 
         async function toggleManual(name, key) {
@@ -234,9 +211,6 @@
             if (statsContainer) {
                 statsContainer.innerHTML = '';
                 Object.keys(stats).sort().forEach(sName => {
-                    const isFiltered = sessionVal !== 'all' && sessionVal !== sName;
-                    if (isFiltered) return;
-
                     const s = stats[sName];
                     statsContainer.innerHTML += `
                         <div class="bg-slate-50 border border-slate-200/60 rounded-xl p-3 flex flex-col justify-between shadow-sm">
@@ -261,7 +235,7 @@
             }
 
             // 3. 학습자 리스트 렌더링
-            filteredMaster.filter(m => sessionVal === 'all' || m.session === sessionVal).forEach(student => {
+            filteredMaster.forEach(student => {
                 const dailyLogs = state.attendanceData
                     .filter(a => a.name === student.name && getDayFromDate(a.time) === currentDay)
                     .sort((a,b) => new Date(a.time) - new Date(b.time));
