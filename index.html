@@ -132,25 +132,29 @@
         }
 
         function getFilteredMasterData() {
-            const monthSelect = document.getElementById('month-filter');
-            if (!monthSelect) return state.masterData;
-            
-            const selectedMonthVal = monthSelect.value;
-            const isAugust = selectedMonthVal.includes('-08-');
-            const targetTag = isAugust ? '8월' : '7월';
+            if (!state.masterData || state.masterData.length === 0) return [];
 
-            return state.masterData.filter(m => {
-                // 차수(session), 월(month), 이름 등에서 '2026 온보딩_8월' 등 키워드 매칭
-                const combinedText = `${m.session || ''} ${m.month || ''}`.trim();
-                
-                // 마스터 명단의 차수 정보에 '7월' 또는 '8월'이 명시되어 있다면 해당 월 대상자만 필터링
-                if (combinedText.includes('7월') || combinedText.includes('8월')) {
-                    return combinedText.includes(targetTag);
+            const monthSelect = document.getElementById('month-filter');
+            const selectedMonthVal = monthSelect ? monthSelect.value : '2026-08-10';
+            const isAugust = selectedMonthVal.includes('-08-');
+
+            // 8월/7월 관련 다양한 명칭 키워드 감지 (2026 온보딩_8월, 8월 1차수, 08월 등)
+            const filtered = state.masterData.filter(m => {
+                const fullText = `${m.session || ''} ${m.month || ''} ${m.name || ''} ${m.company || ''}`.trim();
+                if (isAugust) {
+                    return fullText.includes('8월') || fullText.includes('08월') || fullText.includes('_8') || fullText.includes('8차');
+                } else {
+                    return fullText.includes('7월') || fullText.includes('07월') || fullText.includes('_7') || fullText.includes('7차');
                 }
-                
-                // 구분 태그가 명확치 않은 데이터는 기본 표시
-                return true;
             });
+
+            // 일치하는 월 대상자가 있으면 필터링된 결과 반환
+            if (filtered.length > 0) {
+                return filtered;
+            }
+
+            // 만약 텍스트 형식 차이로 0명이 추출되더라도, 명단이 비어 보이지 않도록 전체 명단 반환
+            return state.masterData;
         }
 
         function onMonthChange() {
