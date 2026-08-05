@@ -216,4 +216,56 @@
                             <div class="flex items-center justify-between text-sm gap-2">
                                 <div class="bg-white px-2 py-1 rounded-lg border border-slate-100 flex-1 text-center">
                                     <div class="text-[9px] text-slate-400 font-bold uppercase leading-none mb-1">전체</div>
-                                    <div class="font-bold
+                                    <div class="font-bold text-slate-800">${s.total}명</div>
+                                </div>
+                                <div class="bg-blue-50/50 px-2 py-1 rounded-lg border border-blue-100/50 flex-1 text-center">
+                                    <div class="text-[9px] text-blue-400 font-bold uppercase leading-none mb-1">외출</div>
+                                    <div class="font-bold text-blue-600">${s.out}명</div>
+                                </div>
+                                <div class="bg-green-50/50 px-2 py-1 rounded-lg border border-green-100/50 flex-1 text-center">
+                                    <div class="text-[9px] text-green-400 font-bold uppercase leading-none mb-1">복귀</div>
+                                    <div class="font-bold text-green-600">${s.in}명</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            // 3. 학습자 대시보드 리스트 렌더링
+            filteredMaster.filter(m => sessionVal === 'all' || m.session === sessionVal).forEach(student => {
+                const dailyLogs = state.attendanceData
+                    .filter(a => a.name === student.name && getDayFromDate(a.time) === currentDay)
+                    .sort((a,b) => new Date(a.time) - new Date(b.time));
+
+                const outLog = dailyLogs[0];
+                const inLog = dailyLogs[1];
+
+                tbody.innerHTML += `<tr>
+                    <td class="p-3 font-bold cursor-pointer text-blue-600 hover:underline" onclick="showContact('${student.name.replace(/'/g, "\\'")}')">${student.name}</td>
+                    <td class="p-3 text-xs text-slate-500">${student.session || '-'}</td>
+                    <td class="p-3">${generateCell(student.name, outLog?.time, 'out' + currentDay, true)}</td>
+                    <td class="p-3">${generateCell(student.name, inLog?.time, 'in' + currentDay, false)}</td>
+                </tr>`;
+            });
+        }
+
+        function generateCell(name, time, key, isOut) {
+            const safeName = name.replace(/'/g, "\\'");
+            const manualTime = state.manualEntries[name]?.[key];
+            
+            if (time) {
+                return `<span class="status-badge ${isOut ? 'status-checkout' : 'status-present'}">${isOut ? '외출' : '복귀'}</span><span class="text-xs ml-1 font-mono">${new Date(time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
+            }
+            if (manualTime) {
+                return `<span onclick="toggleManual('${safeName}', '${key}')" class="status-badge status-manual">수동취소</span><span class="text-xs ml-1 font-mono">${new Date(manualTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
+            }
+            return `<button onclick="toggleManual('${safeName}', '${key}')" class="btn-manual">등록</button>`;
+        }
+
+        // 15초 자동 갱신 및 초기화
+        setInterval(fetchSheetData, 15000);
+        window.onload = fetchSheetData;
+    </script>
+</body>
+</html>
