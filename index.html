@@ -23,9 +23,17 @@
             <div>
                 <h1 class="text-xl font-bold text-slate-900">2026 온보딩 프로그램 외출등록부</h1>
             </div>
-            <select id="session-filter" onchange="render()" class="p-2 border border-slate-300 rounded-lg text-sm bg-white">
-                <option value="all">모든 차수</option>
-            </select>
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- 온보딩 월 선택 필터 -->
+                <select id="month-filter" onchange="onMonthChange()" class="p-2 border border-slate-300 rounded-lg text-sm bg-white font-bold text-blue-700">
+                    <option value="2026-08-03" selected>8월 입과 (8/3 시작)</option>
+                    <option value="2026-07-06">7월 입과 (7/6 시작)</option>
+                </select>
+                <!-- 세부 차수 필터 -->
+                <select id="session-filter" onchange="render()" class="p-2 border border-slate-300 rounded-lg text-sm bg-white">
+                    <option value="all">모든 차수</option>
+                </select>
+            </div>
         </header>
 
         <div class="glass-card p-4 sm:p-6 shadow-sm border">
@@ -36,7 +44,7 @@
                 <button onclick="setDay(4)" id="btn-day4" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold">4일차</button>
             </div>
             
-            <!-- 일자별 버튼 하단에 차수별 [전체 / 외출 / 복귀] 인원 표기 영역 -->
+            <!-- 차수별 현황 통계 카드 영역 -->
             <div id="stats-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
 
             <div class="overflow-x-auto">
@@ -50,14 +58,12 @@
         </div>
     </div>
 
-    <!-- 연락처 상세 정보 모달 -->
     <div id="contact-modal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
         <div class="bg-white p-6 rounded-2xl w-full max-w-sm shadow-xl">
             <h3 id="modal-name" class="font-bold text-lg mb-4 text-slate-900 border-b pb-2"></h3>
             <div class="space-y-2 text-sm text-slate-600">
                 <p><strong>소속:</strong> <span id="modal-company"></span></p>
                 <p><strong>직급:</strong> <span id="modal-rank"></span></p>
-                <!-- span에서 a 태그로 변경하여 전화 바로걸기 연동 -->
                 <p><strong>연락처:</strong> <a id="modal-phone" href="" class="text-blue-600 font-bold hover:underline"></a></p>
             </div>
             <button onclick="document.getElementById('contact-modal').classList.add('hidden')" class="w-full mt-6 py-3 bg-slate-900 text-white rounded-xl font-bold">확인</button>
@@ -65,13 +71,21 @@
     </div>
 
     <script>
-        let currentDay = 1, state = { masterData: [], attendanceData: [], manualEntries: JSON.parse(localStorage.getItem('manual') || '{}') };
-        const scriptUrl = 'https://script.google.com/macros/s/AKfycbznpzVjDLXDu-yKAoAieDsr3F7BFv5hPnm3DFqXm7el7j5e57y-YOVcLUYMhoSOUqM4/exec';
-        const START_DATE = new Date('2026-07-06'); // 1일차 기준일: 7월 6일
+        let currentDay = 1;
+        let state = { masterData: [], attendanceData: [], manualEntries: JSON.parse(localStorage.getItem('manual') || '{}') };
+        const scriptUrl = 'https://script.google.com/macros/s/AKfycbwCd7d5AiBIKC33bgAdWAgtVLvbZ4348g_TDeFEbVx1PE-xvBf6sdK-uwh7uJqGTF2E/exec';
+        
+        // 동적 시작일 구하기 함수
+        function getStartDate() {
+            const monthVal = document.getElementById('month-filter').value;
+            return new Date(monthVal);
+        }
 
+        // 입력된 날짜를 기준으로 N일차 계산 (선택한 월 시작일 기준)
         function getDayFromDate(dateStr) {
             const date = new Date(dateStr);
-            const diffTime = date.getTime() - START_DATE.getTime();
+            const startDate = getStartDate();
+            const diffTime = date.getTime() - startDate.getTime();
             return Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
         }
 
@@ -86,11 +100,33 @@
             } catch (e) { console.error("데이터 로드 실패:", e); }
         }
 
-        // 구글 시트 마스터 데이터 기준으로 차수 목록 필터링 자동 갱신
+        function getFilteredMasterData() {
+            const monthSelect = document.getElementById('month-filter');
+            const selectedMonthVal = monthSelect.value; // '2026-08-03' 또는 '2026-07-06'
+            const monthLabel = selectedMonthVal.includes('-08-') ? '8월' : '7월';
+
+            return state.masterData.filter(m => {
+                // 1. 마스터 데이터에 month 필드가 있으면 그것으로 필터링
+                if (m.month) return m.month.includes(monthLabel);
+                // 2. session(차수명)에 '8월' 또는 '7월' 문구가 포함된 경우
+                if (m.session && (m.session.includes('7월') || m.session.includes('8월'))) {
+                    return m.session.includes(monthLabel);
+                }
+                // 3. 별도 구분이 없을 경우 모두 표시
+                return true;
+            });
+        }
+
+        function onMonthChange() {
+            updateSessionFilter();
+            render();
+        }
+
         function updateSessionFilter() {
             const filter = document.getElementById('session-filter');
             const currentVal = filter.value;
-            const sessions = [...new Set(state.masterData.map(m => m.session).filter(Boolean))].sort();
+            const currentMaster = getFilteredMasterData();
+            const sessions = [...new Set(currentMaster.map(m => m.session).filter(Boolean))].sort();
             
             filter.innerHTML = '<option value="all">모든 차수</option>';
             sessions.forEach(s => {
@@ -131,7 +167,6 @@
             document.getElementById('modal-company').textContent = student.company;
             document.getElementById('modal-rank').textContent = student.rank;
             
-            // 전화연락 바로걸기(tel: URI) 연동
             const phoneEl = document.getElementById('modal-phone');
             phoneEl.textContent = student.phone;
             phoneEl.href = 'tel:' + student.phone;
@@ -144,9 +179,11 @@
             const tbody = document.getElementById('attendance-table-body');
             tbody.innerHTML = '';
             
-            // 1. 실시간 차수별 통계 집계
+            const filteredMaster = getFilteredMasterData();
+
+            // 1. 차수별 통계 집계
             const stats = {};
-            state.masterData.forEach(student => {
+            filteredMaster.forEach(student => {
                 const sName = student.session || '기타';
                 if (!stats[sName]) {
                     stats[sName] = { total: 0, out: 0, in: 0 };
@@ -170,7 +207,7 @@
                 statsContainer.innerHTML = '';
                 Object.keys(stats).sort().forEach(sName => {
                     const isFiltered = sessionVal !== 'all' && sessionVal !== sName;
-                    if (isFiltered) return; // 필터링 활성화 시 해당 차수 카드만 표시
+                    if (isFiltered) return;
 
                     const s = stats[sName];
                     statsContainer.innerHTML += `
@@ -195,8 +232,8 @@
                 });
             }
 
-            // 3. 메인 테이블 리스트 렌더링
-            state.masterData.filter(m => sessionVal === 'all' || m.session === sessionVal).forEach(student => {
+            // 3. 학습자 대시보드 리스트 렌더링
+            filteredMaster.filter(m => sessionVal === 'all' || m.session === sessionVal).forEach(student => {
                 const dailyLogs = state.attendanceData
                     .filter(a => a.name === student.name && getDayFromDate(a.time) === currentDay)
                     .sort((a,b) => new Date(a.time) - new Date(b.time));
@@ -226,7 +263,7 @@
             return `<button onclick="toggleManual('${safeName}', '${key}')" class="btn-manual">등록</button>`;
         }
 
-        // 15초 자동 갱신 기능 정상 유지 및 첫 로드
+        // 15초 자동 갱신 및 초기화
         setInterval(fetchSheetData, 15000);
         window.onload = fetchSheetData;
     </script>
