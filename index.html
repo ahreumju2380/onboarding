@@ -23,17 +23,15 @@
             <div>
                 <h1 class="text-xl font-bold text-slate-900">2026 온보딩 프로그램 외출등록부</h1>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <!-- 온보딩 월 선택 필터 (8/10 시작, 7/6 시작) -->
-                <select id="month-filter" onchange="onMonthChange()" class="p-2 border border-slate-300 rounded-lg text-sm bg-white font-bold text-blue-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="2026-08-10" selected>8월 입과 (8/10 시작)</option>
-                    <option value="2026-07-06">7월 입과 (7/6 시작)</option>
+            <div>
+                <select id="month-filter" onchange="onMonthChange()" class="p-2 border border-slate-300 rounded-lg text-sm bg-white font-bold text-blue-600 shadow-sm">
+                    <option value="8" selected>8월 입과 (8/10 시작)</option>
+                    <option value="7">7월 입과 (7/6 시작)</option>
                 </select>
             </div>
         </header>
 
         <div class="glass-card p-4 sm:p-6 shadow-sm border">
-            <!-- 1~4일차 선택 탭 -->
             <div class="flex gap-1.5 mb-4 overflow-x-auto pb-2">
                 <button onclick="setDay(1)" id="btn-day1" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold active-tab">1일차</button>
                 <button onclick="setDay(2)" id="btn-day2" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold">2일차</button>
@@ -41,7 +39,7 @@
                 <button onclick="setDay(4)" id="btn-day4" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold">4일차</button>
             </div>
             
-            <!-- 차수별 현황 통계 카드 영역 -->
+            <!-- 실시간 차수별 통계 현황 영역 -->
             <div id="stats-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
 
             <div class="overflow-x-auto">
@@ -54,15 +52,7 @@
                             <th id="th-in" class="p-3">1일차 복귀</th>
                         </tr>
                     </thead>
-                    <tbody id="attendance-table-body" class="divide-y divide-slate-100">
-                        <!-- 초기 로딩 메세지 -->
-                        <tr>
-                            <td colspan="4" class="p-8 text-center text-slate-400">
-                                <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent mb-2"></div>
-                                <p class="text-sm font-medium text-slate-600">구글 시트에서 명단을 불러오는 중입니다...</p>
-                            </td>
-                        </tr>
-                    </tbody>
+                    <tbody id="attendance-table-body" class="divide-y divide-slate-100"></tbody>
                 </table>
             </div>
         </div>
@@ -83,31 +73,25 @@
 
     <script>
         let currentDay = 1;
-        let isLoading = true;
-        let fetchError = null;
         let state = { 
             masterData: [], 
             attendanceData: [], 
             manualEntries: JSON.parse(localStorage.getItem('manual') || '{}') 
         };
-        const scriptUrl = 'https://script.google.com/macros/s/AKfycbCd7d5AiBIKC33bgAdWAgtVLvbZ4348g_TDeFEbVx1PE-xvBf6sdK-uwh7uJqGTF2E/exec';
         
-        // 선택된 입과 월 기준 동적 시작일 산출
+        // 최신 올바른 배포 URL
+        const scriptUrl = 'https://script.google.com/macros/s/AKfycbzCaW1_mULECrs4VVJPz7C3zLelLL2dXFxk6YDs2O5oIMCIwAawLgaOB19US4DWXUL_/exec';
+        
         function getStartDate() {
-            const monthVal = document.getElementById('month-filter').value;
-            const parts = monthVal.split('-');
-            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            const m = document.getElementById('month-filter') ? document.getElementById('month-filter').value : '8';
+            return m === '7' ? new Date('2026-07-06T00:00:00') : new Date('2026-08-10T00:00:00');
         }
 
-        // 입력된 날짜를 기준으로 N일차 정밀 계산
         function getDayFromDate(dateStr) {
-            if (!dateStr) return null;
             const date = new Date(dateStr);
-            if (isNaN(date.getTime())) return null;
-
+            const startDate = getStartDate();
             const d1 = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-            const d2 = getStartDate();
-            
+            const d2 = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
             const diffTime = d1.getTime() - d2.getTime();
             return Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
         }
@@ -115,46 +99,13 @@
         async function fetchSheetData() {
             try {
                 const res = await fetch(scriptUrl + '?_=' + new Date().getTime());
-                if (!res.ok) throw new Error('서버 응답 오류: ' + res.status);
-                
                 const data = await res.json();
                 state.masterData = data.master || [];
                 state.attendanceData = data.attendance || [];
-                isLoading = false;
-                fetchError = null;
                 render();
-            } catch (e) { 
-                console.error("데이터 로드 실패:", e); 
-                isLoading = false;
-                fetchError = e.message || "데이터를 불러오는 중 오류가 발생했습니다.";
-                render();
+            } catch (e) {
+                console.error("데이터 로드 실패:", e);
             }
-        }
-
-        function getFilteredMasterData() {
-            if (!state.masterData || state.masterData.length === 0) return [];
-
-            const monthSelect = document.getElementById('month-filter');
-            const selectedMonthVal = monthSelect ? monthSelect.value : '2026-08-10';
-            const isAugust = selectedMonthVal.includes('-08-');
-
-            // 8월/7월 관련 다양한 명칭 키워드 감지 (2026 온보딩_8월, 8월 1차수, 08월 등)
-            const filtered = state.masterData.filter(m => {
-                const fullText = `${m.session || ''} ${m.month || ''} ${m.name || ''} ${m.company || ''}`.trim();
-                if (isAugust) {
-                    return fullText.includes('8월') || fullText.includes('08월') || fullText.includes('_8') || fullText.includes('8차');
-                } else {
-                    return fullText.includes('7월') || fullText.includes('07월') || fullText.includes('_7') || fullText.includes('7차');
-                }
-            });
-
-            // 일치하는 월 대상자가 있으면 필터링된 결과 반환
-            if (filtered.length > 0) {
-                return filtered;
-            }
-
-            // 만약 텍스트 형식 차이로 0명이 추출되더라도, 명단이 비어 보이지 않도록 전체 명단 반환
-            return state.masterData;
         }
 
         function onMonthChange() {
@@ -189,69 +140,41 @@
             const student = state.masterData.find(m => m.name === name);
             if (!student) return;
             document.getElementById('modal-name').textContent = student.name;
-            document.getElementById('modal-company').textContent = student.company;
-            document.getElementById('modal-rank').textContent = student.rank;
+            document.getElementById('modal-company').textContent = student.company || '정보 없음';
+            document.getElementById('modal-rank').textContent = student.rank || '정보 없음';
             
             const phoneEl = document.getElementById('modal-phone');
-            phoneEl.textContent = student.phone;
-            phoneEl.href = 'tel:' + student.phone;
+            phoneEl.textContent = student.phone || '정보 없음';
+            phoneEl.href = student.phone ? 'tel:' + student.phone : '#';
             
             document.getElementById('contact-modal').classList.remove('hidden');
         }
 
         function render() {
             const tbody = document.getElementById('attendance-table-body');
-            const statsContainer = document.getElementById('stats-container');
-            if (!tbody) return;
+            tbody.innerHTML = '';
+            
+            const monthVal = document.getElementById('month-filter') ? document.getElementById('month-filter').value : '8';
+            
+            // 필터링 규칙 (8월 vs 7월)
+            let students = state.masterData.filter(student => {
+                const sess = String(student.session || '');
+                const m = String(student.month || '');
+                if (monthVal === '8') {
+                    return sess.includes('8') || m.includes('8');
+                } else {
+                    return sess.includes('7') || m.includes('7') || (!sess.includes('8') && !m.includes('8'));
+                }
+            });
 
-            // 1. 로딩 중 처리
-            if (isLoading) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="p-8 text-center text-slate-400">
-                            <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent mb-2"></div>
-                            <p class="text-sm font-medium text-slate-600">구글 시트에서 명단을 불러오는 중입니다...</p>
-                        </td>
-                    </tr>`;
-                if (statsContainer) statsContainer.innerHTML = '';
-                return;
+            // 예외 처리: 만약 필터 결과가 0명이고 전체 명단이 존재한다면 전체 명단을 표시 (데이터 누락 방지)
+            if (students.length === 0 && state.masterData.length > 0) {
+                students = state.masterData;
             }
 
-            // 2. 통신 에러 발생 시 처리
-            if (fetchError) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="p-8 text-center text-red-500">
-                            <p class="font-bold text-red-600 mb-1">데이터 연결 오류</p>
-                            <p class="text-xs text-slate-500">${fetchError}</p>
-                            <p class="text-xs text-slate-400 mt-2">구글 앱스스크립트 배포 상태와 권한을 확인해 주세요.</p>
-                        </td>
-                    </tr>`;
-                if (statsContainer) statsContainer.innerHTML = '';
-                return;
-            }
-
-            const filteredMaster = getFilteredMasterData();
-
-            // 3. 선택된 월의 대상 학습자가 없을 때 안내 표시
-            if (filteredMaster.length === 0) {
-                const monthSelect = document.getElementById('month-filter');
-                const selectedText = monthSelect ? monthSelect.options[monthSelect.selectedIndex].text : '선택한 월';
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="p-8 text-center text-slate-400">
-                            <p class="font-bold text-slate-600 mb-1">'${selectedText}' 대상 학습자가 없습니다.</p>
-                            <p class="text-xs text-slate-500 mt-1">구글 시트 [마스터명단]의 차수 열에 <span class="font-bold text-blue-600">'2026 온보딩_8월'</span> 형태로 적혀있는지 확인해 보세요.</p>
-                            <p class="text-xs text-slate-400 mt-1">이전 7월 명단을 보시려면 우측 상단에서 '7월 입과'를 선택해 주세요.</p>
-                        </td>
-                    </tr>`;
-                if (statsContainer) statsContainer.innerHTML = '';
-                return;
-            }
-
-            // 4. 차수별 통계 집계
+            // 1. 실시간 차수별 통계 집계
             const stats = {};
-            filteredMaster.forEach(student => {
+            students.forEach(student => {
                 const sName = student.session || '기타';
                 if (!stats[sName]) {
                     stats[sName] = { total: 0, out: 0, in: 0 };
@@ -269,14 +192,15 @@
                 if (inLog) stats[sName].in++;
             });
 
-            // 5. 통계 카드 렌더링
+            // 2. 통계 카드 렌더링
+            const statsContainer = document.getElementById('stats-container');
             if (statsContainer) {
                 statsContainer.innerHTML = '';
                 Object.keys(stats).sort().forEach(sName => {
                     const s = stats[sName];
                     statsContainer.innerHTML += `
                         <div class="bg-slate-50 border border-slate-200/60 rounded-xl p-3 flex flex-col justify-between shadow-sm">
-                            <span class="text-xs font-bold text-slate-600 mb-2 truncate">${sName} 현황</span>
+                            <span class="text-xs font-bold text-slate-500 mb-2">${sName} 현황</span>
                             <div class="flex items-center justify-between text-sm gap-2">
                                 <div class="bg-white px-2 py-1 rounded-lg border border-slate-100 flex-1 text-center">
                                     <div class="text-[9px] text-slate-400 font-bold uppercase leading-none mb-1">전체</div>
@@ -296,9 +220,13 @@
                 });
             }
 
-            // 6. 학습자 리스트 렌더링
-            tbody.innerHTML = '';
-            filteredMaster.forEach(student => {
+            // 3. 메인 테이블 리스트 렌더링
+            if (students.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400">등록된 학습자 명단이 없습니다.</td></tr>`;
+                return;
+            }
+
+            students.forEach(student => {
                 const dailyLogs = state.attendanceData
                     .filter(a => a.name === student.name && getDayFromDate(a.time) === currentDay)
                     .sort((a,b) => new Date(a.time) - new Date(b.time));
@@ -328,7 +256,6 @@
             return `<button onclick="toggleManual('${safeName}', '${key}')" class="btn-manual">등록</button>`;
         }
 
-        // 15초 자동 갱신 및 초기 실행
         setInterval(fetchSheetData, 15000);
         window.onload = fetchSheetData;
     </script>
