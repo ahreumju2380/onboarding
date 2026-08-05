@@ -24,7 +24,7 @@
                 <h1 class="text-xl font-bold text-slate-900">2026 온보딩 프로그램 외출등록부</h1>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-                <!-- 온보딩 월 선택 필터 (8월 시작일을 8/10로 수정) -->
+                <!-- 온보딩 월 선택 필터 -->
                 <select id="month-filter" onchange="onMonthChange()" class="p-2 border border-slate-300 rounded-lg text-sm bg-white font-bold text-blue-700">
                     <option value="2026-08-10" selected>8월 입과 (8/10 시작)</option>
                     <option value="2026-07-06">7월 입과 (7/6 시작)</option>
@@ -73,19 +73,26 @@
     <script>
         let currentDay = 1;
         let state = { masterData: [], attendanceData: [], manualEntries: JSON.parse(localStorage.getItem('manual') || '{}') };
-        const scriptUrl = 'https://script.google.com/macros/s/AKfycbwCd7d5AiBIKC33bgAdWAgtVLvbZ4348g_TDeFEbVx1PE-xvBf6sdK-uwh7uJqGTF2E/exec';
+        // 최신 배포 URL 적용
+        const scriptUrl = 'https://script.google.com/macros/s/AKfycbCd7d5AiBIKC33bgAdWAgtVLvbZ4348g_TDeFEbVx1PE-xvBf6sdK-uwh7uJqGTF2E/exec';
         
-        // 동적 시작일 구하기 함수
+        // 동적 시작일 구하기 함수 (선택된 입과 월 기준)
         function getStartDate() {
-            const monthVal = document.getElementById('month-filter').value;
-            return new Date(monthVal);
+            const monthVal = document.getElementById('month-filter').value; // '2026-08-10' 또는 '2026-07-06'
+            const parts = monthVal.split('-');
+            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
         }
 
-        // 입력된 날짜를 기준으로 N일차 계산 (선택한 월 시작일 기준)
+        // 입력된 날짜를 기준으로 N일차 정밀 계산
         function getDayFromDate(dateStr) {
+            if (!dateStr) return null;
             const date = new Date(dateStr);
-            const startDate = getStartDate();
-            const diffTime = date.getTime() - startDate.getTime();
+            if (isNaN(date.getTime())) return null;
+
+            const d1 = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            const d2 = getStartDate();
+            
+            const diffTime = d1.getTime() - d2.getTime();
             return Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
         }
 
@@ -102,22 +109,27 @@
 
         function getFilteredMasterData() {
             const monthSelect = document.getElementById('month-filter');
-            const selectedMonthVal = monthSelect.value; // '2026-08-10' 또는 '2026-07-06'
-            const monthLabel = selectedMonthVal.includes('-08-') ? '8월' : '7월';
+            if (!monthSelect) return state.masterData;
+            
+            const selectedMonthVal = monthSelect.value;
+            const isAugust = selectedMonthVal.includes('-08-');
+            const targetTag = isAugust ? '8월' : '7월';
 
             return state.masterData.filter(m => {
-                // 1. 마스터 데이터에 month 필드가 있으면 그것으로 필터링
-                if (m.month) return m.month.includes(monthLabel);
-                // 2. session(차수명)에 '8월' 또는 '7월' 문구가 포함된 경우
-                if (m.session && (m.session.includes('7월') || m.session.includes('8월'))) {
-                    return m.session.includes(monthLabel);
+                const combinedText = `${m.session || ''} ${m.month || ''}`.trim();
+                
+                // '2026 온보딩_8월', '2026 온보딩_7월' 등 7월/8월 키워드가 포함된 경우 정확히 매칭
+                if (combinedText.includes('7월') || combinedText.includes('8월')) {
+                    return combinedText.includes(targetTag);
                 }
-                // 3. 별도 구분이 없을 경우 모두 표시
-                return true;
+                
+                // 키워드가 명시되지 않은 기존 데이터는 7월 입과 데이터로 분류
+                return !isAugust;
             });
         }
 
         function onMonthChange() {
+            document.getElementById('session-filter').value = 'all';
             updateSessionFilter();
             render();
         }
@@ -181,6 +193,22 @@
             
             const filteredMaster = getFilteredMasterData();
 
+            // 선택된 월의 대상 학습자가 없을 때 안내 표시
+            if (filteredMaster.length === 0) {
+                const monthSelect = document.getElementById('month-filter');
+                const selectedText = monthSelect ? monthSelect.options[monthSelect.selectedIndex].text : '선택한 월';
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="p-8 text-center text-slate-400">
+                            <p class="font-bold text-slate-600 mb-1">'${selectedText}' 대상 학습자가 없습니다.</p>
+                            <p class="text-xs">우측 상단에서 '7월 입과'를 선택하시거나, 구글 시트 [마스터명단]에 8월 입과자를 등록해 주세요.</p>
+                        </td>
+                    </tr>`;
+                const statsContainer = document.getElementById('stats-container');
+                if (statsContainer) statsContainer.innerHTML = '';
+                return;
+            }
+
             // 1. 차수별 통계 집계
             const stats = {};
             filteredMaster.forEach(student => {
@@ -232,7 +260,7 @@
                 });
             }
 
-            // 3. 학습자 대시보드 리스트 렌더링
+            // 3. 학습자 리스트 렌더링
             filteredMaster.filter(m => sessionVal === 'all' || m.session === sessionVal).forEach(student => {
                 const dailyLogs = state.attendanceData
                     .filter(a => a.name === student.name && getDayFromDate(a.time) === currentDay)
