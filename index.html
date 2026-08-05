@@ -69,7 +69,6 @@
     <script>
         let currentDay = 1;
         let state = { masterData: [], attendanceData: [], manualEntries: JSON.parse(localStorage.getItem('manual') || '{}') };
-        // 최신 배포 URL 적용
         const scriptUrl = 'https://script.google.com/macros/s/AKfycbCd7d5AiBIKC33bgAdWAgtVLvbZ4348g_TDeFEbVx1PE-xvBf6sdK-uwh7uJqGTF2E/exec';
         
         // 동적 시작일 구하기 함수 (선택된 입과 월 기준)
@@ -113,11 +112,13 @@
             return state.masterData.filter(m => {
                 const combinedText = `${m.session || ''} ${m.month || ''}`.trim();
                 
+                // 만약 마스터 명단의 차수 또는 월 정보에 '7월' 또는 '8월'이 명시되어 있다면 구분 필터링
                 if (combinedText.includes('7월') || combinedText.includes('8월')) {
                     return combinedText.includes(targetTag);
                 }
                 
-                return !isAugust;
+                // 별도 구분 태그가 없는 수강생 데이터는 8월 선택이 아닐 때 혹은 전체에 표시
+                return true;
             });
         }
 
@@ -164,8 +165,8 @@
         }
 
         function render() {
-            const sessionVal = document.getElementById('session-filter').value;
             const tbody = document.getElementById('attendance-table-body');
+            if (!tbody) return;
             tbody.innerHTML = '';
             
             const filteredMaster = getFilteredMasterData();
@@ -178,7 +179,7 @@
                     <tr>
                         <td colspan="4" class="p-8 text-center text-slate-400">
                             <p class="font-bold text-slate-600 mb-1">'${selectedText}' 대상 학습자가 없습니다.</p>
-                            <p class="text-xs">우측 상단에서 '7월 입과'를 선택하시거나, 구글 시트 [마스터명단]에 8월 입과자를 등록해 주세요.</p>
+                            <p class="text-xs">우측 상단에서 다른 입과 월을 선택하시거나, 구글 시트 [마스터명단]을 확인해 주세요.</p>
                         </td>
                     </tr>`;
                 const statsContainer = document.getElementById('stats-container');
